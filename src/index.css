@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #0f172a; /* deep slate-900 cosmic dark */
+  color: #f8fafc;
+  overflow-x: hidden;
+}
+
+/* Custom interactive Leaflet map styling overrides */
+.leaflet-container {
+  font-family: var(--font-sans) !important;
+}
+
+.custom-leaflet-marker {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #ffffff !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.15), 0 8px 10px -6px rgb(0 0 0 / 0.15) !important;
+  border-radius: 16px !important;
+  color: #0f172a !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-tip {
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+/* MarkerCluster custom color overrides */
+.marker-cluster-small {
+  background-color: rgba(16, 185, 129, 0.4) !important; /* emerald opacity */
+}
+.marker-cluster-small div {
+  background-color: rgba(16, 185, 129, 0.9) !important;
+  color: white !important;
+  font-weight: bold !important;
+}
+.marker-cluster-medium {
+  background-color: rgba(245, 158, 11, 0.4) !important; /* amber opacity */
+}
+.marker-cluster-medium div {
+  background-color: rgba(245, 158, 11, 0.9) !important;
+  color: white !important;
+  font-weight: bold !important;
+}
+.marker-cluster-large {
+  background-color: rgba(239, 68, 68, 0.4) !important; /* red opacity */
+}
+.marker-cluster-large div {
+  background-color: rgba(239, 68, 68, 0.9) !important;
+  color: white !important;
+  font-weight: bold !important;
+}
+
