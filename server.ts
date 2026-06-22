@@ -13,8 +13,8 @@ import dns from "dns";
 // Force Node to prefer IPv4 when fetching from APIs
 dns.setDefaultResultOrder("ipv4first");
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const _filename = typeof __filename !== "undefined" ? __filename : fileURLToPath(import.meta.url);
+const _dirname = typeof __dirname !== "undefined" ? __dirname : path.dirname(_filename);
 
 async function startServer() {
   const app = express();
@@ -42,7 +42,17 @@ async function startServer() {
   function loadStopsFromCSV(): any[] {
     if (cachedStops) return cachedStops;
     
-    const csvPath = path.join(__dirname, "eshot-otobus-duraklari.csv");
+    // Prefer the file located in the project root (process.cwd()).
+    let csvPath = path.resolve(process.cwd(), "eshot-otobus-duraklari.csv");
+    // If the file does not exist there, try relative to _dirname.
+    if (!fs.existsSync(csvPath)) {
+      csvPath = path.join(_dirname, "eshot-otobus-duraklari.csv");
+    }
+    // If it still doesn't exist, try parent of _dirname (e.g., when running from dist/)
+    if (!fs.existsSync(csvPath)) {
+      csvPath = path.join(_dirname, "../eshot-otobus-duraklari.csv");
+    }
+    
     const csvContent = fs.readFileSync(csvPath, "utf-8");
     const lines = csvContent.trim().split("\n");
     

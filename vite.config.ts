@@ -13,7 +13,8 @@ export default defineConfig(() => {
     },
     server: {
       host: true, // Ağdaki diğer bilgisayarlardan erişim için
-      allowedHosts: true, // Tünel servisleri (localtunnel, ngrok vb.) için izin
+      // Allow any host (required for Render URLs & tunneling services)
+      allowedHosts: true as const,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
