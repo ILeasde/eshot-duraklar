@@ -377,10 +377,11 @@ export default function App() {
     }, 100);
   }, [activeTab]);
 
-  // Positions Map Init & Markers Update
+  // Positions Map Init - initialize when tab becomes visible
   useEffect(() => {
     const L = (window as any).L;
     if (!L || !positionsMapContainerRef.current) return;
+    if (activeTab !== "positions") return;
 
     if (!positionsMapInstanceRef.current) {
       positionsMapInstanceRef.current = L.map(positionsMapContainerRef.current, {
@@ -397,6 +398,18 @@ export default function App() {
 
       L.control.zoom({ position: "bottomleft" }).addTo(positionsMapInstanceRef.current);
     }
+
+    // Force invalidateSize after map init/tab switch with multiple delays
+    const map = positionsMapInstanceRef.current;
+    setTimeout(() => map.invalidateSize(), 100);
+    setTimeout(() => map.invalidateSize(), 300);
+    setTimeout(() => map.invalidateSize(), 600);
+  }, [activeTab]);
+
+  // Positions Map Markers Update
+  useEffect(() => {
+    const L = (window as any).L;
+    if (!L || !positionsMapInstanceRef.current) return;
 
     const map = positionsMapInstanceRef.current;
 
