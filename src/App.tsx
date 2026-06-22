@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Bus,
   MapPin,
   FileText,
   MessageSquare,
   Sparkles,
-  HelpCircle,
   TrendingUp,
   Heart,
   Search,
@@ -17,18 +15,16 @@ import {
   Code,
   ArrowRight,
   Map,
-  Compass,
-  AlertCircle,
-  ExternalLink
+  Compass
 } from "lucide-react";
 
 // Types derived from types.ts
-import { YaklasanOtobus, OtobusKonumu } from "./types";
+import { YaklasanOtobus } from "./types";
 import { fetchAllStops, Stop } from "./stopsData";
 
 export default function App() {
   // Navigation State
-  const [activeTab, setActiveTab] = useState<"approaching" | "positions" | "sandbox" | "assistant">("approaching");
+  const [activeTab, setActiveTab] = useState<"approaching" | "sandbox" | "assistant">("approaching");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Tüm Duraklar - API'den yüklenir
@@ -49,13 +45,6 @@ export default function App() {
   const [mapCenterLat, setMapCenterLat] = useState<number>(38.4199);
   const [mapCenterLng, setMapCenterLng] = useState<number>(27.1279);
   const [mapZoom, setMapZoom] = useState<number>(2.5);
-
-  // Hatta Ait Otobüs Konumları State
-  const [selectedRouteId, setSelectedRouteId] = useState<number>(121); // Default 121 Mavişehir - Konak
-  const [busPositions, setBusPositions] = useState<OtobusKonumu[]>([]);
-  const [errorPositions, setErrorPositions] = useState<string | null>(null);
-  const [loadingPositions, setLoadingPositions] = useState(false);
-  const [positionAutoRefreshTimer, setPositionAutoRefreshTimer] = useState<number>(0);
 
   // API Sandbox State
   const [apiMethod, setApiMethod] = useState<string>("GET");
@@ -83,11 +72,6 @@ export default function App() {
   const markersRef = useRef<{ [key: string]: any }>({});
   const clusterGroupRef = useRef<any>(null);
 
-  // Leaflet Map Refs - Positions Tab
-  const positionsMapContainerRef = useRef<HTMLDivElement | null>(null);
-  const positionsMapInstanceRef = useRef<any>(null);
-  const positionsMarkersRef = useRef<any[]>([]);
-
   // Pre-configured options for easy testing
   const popularStops = [
     { code: "10005", name: "Bahribaba" },
@@ -95,14 +79,6 @@ export default function App() {
     { code: "20057", name: "Turan" },
     { code: "20040", name: "Çınarlı Hastanesi" },
     { code: "20020", name: "Bostanlı İskele" }
-  ];
-
-  const popularRoutes = [
-    { id: 121, name: "121 Mavişehir - Konak" },
-    { id: 253, name: "253 Halkapınar Metro - Konak" },
-    { id: 446, name: "446 Alaybey - Bostanlı" },
-    { id: 802, name: "802 Egekent Transfer - Konak" },
-    { id: 792, name: "792 Görece - Karakuyu Yolu" }
   ];
 
   // Fetch approaching buses for selected/searched stop - sadece tıklandığında çağrılır
@@ -126,30 +102,6 @@ export default function App() {
       setErrorApproaching("Ulaşım servisiyle bağlantı kurulamadı.");
     } finally {
       setLoadingApproaching(false);
-    }
-  };
-
-  // Fetch active bus positions
-  const fetchBusPositions = async (routeId: number) => {
-    setLoadingPositions(true);
-    setErrorPositions(null);
-    try {
-      const res = await fetch(`/api/iztek/hatotobuskonumlari/${routeId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.HataMesaj) {
-          setErrorPositions(data.HataMesaj);
-          setBusPositions([]);
-        } else {
-          setBusPositions(data.HatOtobusKonumlari || []);
-        }
-      } else {
-        setErrorPositions("Canlı otobüs konumları temin edilemedi.");
-      }
-    } catch (err) {
-      setErrorPositions("Bağlantı hatası sebebiyle canlandırma başarısız oldu.");
-    } finally {
-      setLoadingPositions(false);
     }
   };
 
@@ -344,26 +296,6 @@ export default function App() {
     }
   }, [searchStopId, stopsData]);
 
-  // Handle Tab transitions - sadece hat konumları otomatik yüklenir
-  useEffect(() => {
-    fetchBusPositions(selectedRouteId);
-  }, []);
-
-  // Periodic Refresh triggers for coordinates simulated feed
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPositionAutoRefreshTimer((prev) => {
-        if (prev >= 9) {
-          // fetch silently to maintain live dynamics
-          fetchBusPositions(selectedRouteId);
-          return 0;
-        }
-        return prev + 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [selectedRouteId]);
-
   // Invalidates size on tab change to prevent grey/blank Leaflet canvas bugs
   useEffect(() => {
     const L = (window as any).L;
@@ -371,88 +303,11 @@ export default function App() {
     setTimeout(() => {
       if (activeTab === "approaching" && mapInstanceRef.current) {
         mapInstanceRef.current.invalidateSize();
-      } else if (activeTab === "positions" && positionsMapInstanceRef.current) {
-        positionsMapInstanceRef.current.invalidateSize();
       }
     }, 100);
   }, [activeTab]);
 
-  // Positions Map Init - initialize when tab becomes visible
-  useEffect(() => {
-    const L = (window as any).L;
-    if (!L || !positionsMapContainerRef.current) return;
-    if (activeTab !== "positions") return;
 
-    if (!positionsMapInstanceRef.current) {
-      positionsMapInstanceRef.current = L.map(positionsMapContainerRef.current, {
-        center: [38.4199, 27.1279],
-        zoom: 12,
-        zoomControl: false,
-      });
-
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; OpenStreetMap & CARTO',
-        subdomains: "abcd",
-        maxZoom: 20
-      }).addTo(positionsMapInstanceRef.current);
-
-      L.control.zoom({ position: "bottomleft" }).addTo(positionsMapInstanceRef.current);
-    }
-
-    // Force invalidateSize after map init/tab switch with multiple delays
-    const map = positionsMapInstanceRef.current;
-    setTimeout(() => map.invalidateSize(), 100);
-    setTimeout(() => map.invalidateSize(), 300);
-    setTimeout(() => map.invalidateSize(), 600);
-  }, [activeTab]);
-
-  // Positions Map Markers Update
-  useEffect(() => {
-    const L = (window as any).L;
-    if (!L || !positionsMapInstanceRef.current) return;
-
-    const map = positionsMapInstanceRef.current;
-
-    // Remove old markers
-    positionsMarkersRef.current.forEach((m: any) => map.removeLayer(m));
-    positionsMarkersRef.current = [];
-
-    if (busPositions && busPositions.length > 0) {
-      const bounds = L.latLngBounds();
-      busPositions.forEach((bus) => {
-        const lat = typeof bus.KoorY === 'number' ? bus.KoorY : parseFloat(bus.KoorY as any) || 38.418;
-        const lng = typeof bus.KoorX === 'number' ? bus.KoorX : parseFloat(bus.KoorX as any) || 27.128;
-        
-        const marker = L.circleMarker([lat, lng], {
-          radius: 6,
-          color: '#1e293b',
-          weight: 2,
-          fillColor: '#3b82f6',
-          fillOpacity: 1
-        });
-
-        const popupContent = `
-          <div class="p-1 font-sans text-xs">
-            <p class="font-bold text-slate-900">Otobüs ID: #${bus.OtobusId}</p>
-            <p class="text-[10px] text-blue-600 font-mono mt-0.5 font-bold">Hat: ${selectedRouteId}</p>
-            <div class="mt-1 pt-1 border-t border-slate-100 text-[9px] text-slate-500">
-              Yön: ${bus.Yon === 1 ? "Gidiş" : "Dönüş"}<br/>
-              GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}
-            </div>
-          </div>
-        `;
-
-        marker.bindPopup(popupContent, { closeButton: false, offset: L.point(0, -5) });
-        marker.addTo(map);
-        positionsMarkersRef.current.push(marker);
-        bounds.extend([lat, lng]);
-      });
-
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-      }
-    }
-  }, [busPositions, selectedRouteId]);
 
   return (
     <div id="izmir-dashboard" className="flex flex-col lg:flex-row h-screen w-full bg-[#f9fafb] text-[#111827] font-sans overflow-hidden">
@@ -539,24 +394,6 @@ export default function App() {
               </span>
               <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded">
                 Sec 4.2 & 4.3
-              </span>
-            </button>
-
-            <button
-              id="nav-tab-positions"
-              onClick={() => { setActiveTab("positions"); fetchBusPositions(selectedRouteId); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === "positions"
-                  ? "bg-black text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100/60"
-              }`}
-            >
-              <span className="flex items-center gap-3">
-                <Map className="w-4 h-4 text-gray-400" />
-                Hat Canlı GPS
-              </span>
-              <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded">
-                Sec 4.4
               </span>
             </button>
 
@@ -661,7 +498,6 @@ export default function App() {
             <button
               onClick={() => {
                 if (searchStopId) fetchApproachingBuses(searchStopId);
-                fetchBusPositions(selectedRouteId);
               }}
               title="Yenile"
               className="p-2 border border-gray-200 rounded-xl bg-white hover:bg-gray-105 text-gray-650 transition-colors"
@@ -774,22 +610,12 @@ export default function App() {
                               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">GEÇEN HATLAR (Canlı Geçiş)</p>
                               <div className="flex flex-wrap gap-1.5">
                                 {currentStop.lines.map((ln) => (
-                                  <button
+                                  <span
                                     key={ln}
-                                    title="Bu hattın canlı otobüs konumlarını gör"
-                                    onClick={() => {
-                                      const lineNum = parseInt(ln.replace(/\D/g, ""));
-                                      if (lineNum) {
-                                        setSelectedRouteId(lineNum);
-                                        setActiveTab("positions");
-                                        fetchBusPositions(lineNum);
-                                      }
-                                    }}
-                                    className="bg-white border border-gray-250 hover:bg-black hover:text-white hover:border-black text-gray-700 text-[10px] font-bold px-2 py-1 rounded transition-all flex items-center gap-1 shrink-0"
+                                    className="bg-white border border-gray-250 text-gray-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 shrink-0"
                                   >
                                     <span>{ln}</span>
-                                    <Map className="w-2.5 h-2.5 opacity-60" />
-                                  </button>
+                                  </span>
                                 ))}
                               </div>
                               <p className="text-[9px] text-gray-400 mt-1">
@@ -1102,168 +928,9 @@ export default function App() {
                 </div>
 
               </div>
-
             </div>
 
-          {/* TAB 3: HAT OTOBÜS KONUMLARI (Section 4.4) */}
-          <div className={`space-y-8 ${activeTab === "positions" ? "block" : "hidden"}`} id="tab-positions">
-              
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                
-                {/* Left controls column */}
-                <div className="lg:col-span-4 space-y-6">
-                  
-                  {/* Select Route Panel */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <Bus className="w-5 h-5 text-gray-600" />
-                      Aktif Hat Seçimi (Section 4.4)
-                    </h4>
-                    <p className="text-xs text-gray-400 mb-4">
-                      Belirtilen id'li hatta seyir halinde olan tüm aktif araçların canlı GPS koordinat verilerini okuyarak haritaya yerleştirin.
-                    </p>
-
-                    <div className="space-y-2">
-                      {popularRoutes.map((route) => (
-                        <button
-                          key={route.id}
-                          onClick={() => {
-                            setSelectedRouteId(route.id);
-                            fetchBusPositions(route.id);
-                          }}
-                          className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left text-xs font-semibold transition-all ${
-                            selectedRouteId === route.id
-                              ? "bg-black text-white border-black"
-                              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                          }`}
-                        >
-                          <span>{route.name}</span>
-                          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                            selectedRouteId === route.id ? "bg-white/20 text-white" : "bg-gray-100 text-gray-400"
-                          }`}>
-                            Hat: {route.id}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Manual coordinates input / debug logs */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-3 text-xs font-bold text-[#111827]">
-                      <span>CANLI RADAR PANELİ</span>
-                      <span className="text-green-600 flex items-center gap-1 font-mono uppercase bg-green-50 px-1.5 py-0.5 rounded">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                        AÇIK
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
-                      Eshot API ve entegre simülasyon her 10 saniyede bir koordinat pingi alır. Radar ekranından canlı takibi gerçekleştirebilirsiniz.
-                    </p>
-                    <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-1.5 font-mono text-[10px] text-gray-650">
-                      <div className="flex justify-between">
-                        <span>Son Güncelleme:</span>
-                        <span className="text-gray-900 font-semibold">Her Saniye</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Aktif Hat:</span>
-                        <span className="text-gray-900 font-semibold">{selectedRouteId}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Aktif Cihaz Paketleri:</span>
-                        <span className="text-gray-900 font-semibold">{busPositions.length} Otobüs</span>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Right Interactive Map representation */}
-                <div className="lg:col-span-8 space-y-6">
-                  
-                  {loadingPositions ? (
-                    <div className="bg-white border border-gray-200 rounded-2xl p-20 text-center shadow-sm">
-                      <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                      <p className="text-xs text-gray-500 font-mono">Hat Konumları (Sec 4.4) Çekiliyor...</p>
-                    </div>
-                  ) : errorPositions ? (
-                    <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center text-red-650 shadow-sm">
-                      <AlertCircle className="w-8 h-8 mx-auto text-red-500 mb-2" />
-                      <p className="text-sm font-bold">Hata Alındı</p>
-                      <p className="text-xs text-gray-500 mt-1">{errorPositions}</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      
-                      {/* Grid Map Display */}
-                      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-black" />
-                            Canlı İzmir Körfez Haritası (GPS Simülasyon Blueprint)
-                          </h4>
-                          <span className="text-[10px] font-mono text-gray-400">
-                            Radar Ping'e kalan: {10 - positionAutoRefreshTimer}s
-                          </span>
-                        </div>
-
-                        {/* Real Interactive Leaflet Map for Bus Positions */}
-                        <div className="w-full h-[320px] bg-slate-100 rounded-2xl relative overflow-hidden flex items-center justify-center border border-gray-200 shadow-sm">
-                          <div ref={positionsMapContainerRef} className="w-full h-full z-0"></div>
-                        </div>
-                      </div>
-
-                      {/* Coordinates Table */}
-                      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Aktif Otobüs Donanım Koordinatları ({selectedRouteId} no'lu hat)</h4>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b border-gray-100 text-gray-400 pb-2">
-                                <th className="py-2.5 font-bold uppercase tracking-wider">Otobüs ID</th>
-                                <th className="py-2.5 font-bold uppercase tracking-wider">Hat No</th>
-                                <th className="py-2.5 font-bold uppercase tracking-wider">Yön Segmenti</th>
-                                <th className="py-2.5 font-bold uppercase tracking-wider font-mono">Enlem (KoorY)</th>
-                                <th className="py-2.5 font-bold uppercase tracking-wider font-mono">Boylam (KoorX)</th>
-                                <th className="py-2.5 font-bold uppercase tracking-wider text-right">Durum</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50 text-gray-700">
-                              {busPositions.map((bus, idx) => (
-                                <tr key={`table-row-${bus.OtobusId || idx}-${idx}`} className="hover:bg-gray-50/50">
-                                  <td className="py-3 font-semibold text-gray-900 font-mono">#{bus.OtobusId}</td>
-                                  <td className="py-3">{selectedRouteId}</td>
-                                  <td className="py-3">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                      bus.Yon === 1 ? "bg-cyan-50 text-cyan-700" : "bg-purple-50 text-purple-700"
-                                    }`}>
-                                      {bus.Yon === 1 ? "Körfez Gidiş" : "Körfez Dönüş"}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 font-mono text-gray-500">{(typeof bus.KoorY === 'number' ? bus.KoorY : parseFloat(bus.KoorY as any) || 38.41).toFixed(6)}</td>
-                                  <td className="py-3 font-mono text-gray-500">{(typeof bus.KoorX === 'number' ? bus.KoorX : parseFloat(bus.KoorX as any) || 27.12).toFixed(6)}</td>
-                                  <td className="py-3 text-right">
-                                    <span className="inline-flex items-center gap-1 text-[10px] text-green-700 font-bold bg-green-50 px-2 py-0.5 rounded-full">
-                                      Canlı
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                    </div>
-                  )}
-
-                </div>
-
-              </div>
-
-          </div>
-
-          {/* TAB 4: API SANDBOX & DOCUMENTATION */}
+          {/* TAB 3: API SANDBOX & DOCUMENTATION */}
           <div className={`space-y-8 ${activeTab === "sandbox" ? "block" : "hidden"}`} id="tab-sandbox">
               
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -1463,7 +1130,7 @@ export default function App() {
 
           </div>
 
-          {/* TAB 5: AI ASSISTANT CHAT */}
+          {/* TAB 4: AI ASSISTANT CHAT */}
           <div className={`h-full flex flex-col ${activeTab === "assistant" ? "flex" : "hidden"}`} id="tab-assistant">
               
               <div className="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col justify-between min-h-[500px]">
