@@ -77,11 +77,16 @@ export default function App() {
   const [assistantLoading, setAssistantLoading] = useState<boolean>(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Leaflet Map Refs
+  // Leaflet Map Refs - Approaching Tab
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
   const clusterGroupRef = useRef<any>(null);
+
+  // Leaflet Map Refs - Positions Tab
+  const positionsMapContainerRef = useRef<HTMLDivElement | null>(null);
+  const positionsMapInstanceRef = useRef<any>(null);
+  const positionsMarkersRef = useRef<any[]>([]);
 
   // Pre-configured options for easy testing
   const popularStops = [
@@ -359,6 +364,83 @@ export default function App() {
     return () => clearInterval(timer);
   }, [selectedRouteId]);
 
+  // Invalidates size on tab change to prevent grey/blank Leaflet canvas bugs
+  useEffect(() => {
+    const L = (window as any).L;
+    if (!L) return;
+    setTimeout(() => {
+      if (activeTab === "approaching" && mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      } else if (activeTab === "positions" && positionsMapInstanceRef.current) {
+        positionsMapInstanceRef.current.invalidateSize();
+      }
+    }, 100);
+  }, [activeTab]);
+
+  // Positions Map Init & Markers Update
+  useEffect(() => {
+    const L = (window as any).L;
+    if (!L || !positionsMapContainerRef.current) return;
+
+    if (!positionsMapInstanceRef.current) {
+      positionsMapInstanceRef.current = L.map(positionsMapContainerRef.current, {
+        center: [38.4199, 27.1279],
+        zoom: 12,
+        zoomControl: false,
+      });
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: '&copy; OpenStreetMap & CARTO',
+        subdomains: "abcd",
+        maxZoom: 20
+      }).addTo(positionsMapInstanceRef.current);
+
+      L.control.zoom({ position: "bottomleft" }).addTo(positionsMapInstanceRef.current);
+    }
+
+    const map = positionsMapInstanceRef.current;
+
+    // Remove old markers
+    positionsMarkersRef.current.forEach((m: any) => map.removeLayer(m));
+    positionsMarkersRef.current = [];
+
+    if (busPositions && busPositions.length > 0) {
+      const bounds = L.latLngBounds();
+      busPositions.forEach((bus) => {
+        const lat = typeof bus.KoorY === 'number' ? bus.KoorY : parseFloat(bus.KoorY as any) || 38.418;
+        const lng = typeof bus.KoorX === 'number' ? bus.KoorX : parseFloat(bus.KoorX as any) || 27.128;
+        
+        const marker = L.circleMarker([lat, lng], {
+          radius: 6,
+          color: '#1e293b',
+          weight: 2,
+          fillColor: '#3b82f6',
+          fillOpacity: 1
+        });
+
+        const popupContent = `
+          <div class="p-1 font-sans text-xs">
+            <p class="font-bold text-slate-900">Otobüs ID: #${bus.OtobusId}</p>
+            <p class="text-[10px] text-blue-600 font-mono mt-0.5 font-bold">Hat: ${selectedRouteId}</p>
+            <div class="mt-1 pt-1 border-t border-slate-100 text-[9px] text-slate-500">
+              Yön: ${bus.Yon === 1 ? "Gidiş" : "Dönüş"}<br/>
+              GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+            </div>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent, { closeButton: false, offset: L.point(0, -5) });
+        marker.addTo(map);
+        positionsMarkersRef.current.push(marker);
+        bounds.extend([lat, lng]);
+      });
+
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      }
+    }
+  }, [busPositions, selectedRouteId]);
+
   return (
     <div id="izmir-dashboard" className="flex flex-col lg:flex-row h-screen w-full bg-[#f9fafb] text-[#111827] font-sans overflow-hidden">
       
@@ -580,8 +662,7 @@ export default function App() {
         <div className="flex-1 p-4 md:p-10 overflow-y-auto">
 
           {/* TAB 2: DURAĞA YAKLAŞAN OTOBÜSLER (Section 4.2 & 4.3) */}
-          {activeTab === "approaching" && (
-            <div className="space-y-8" id="tab-approaching">
+          <div className={`space-y-8 ${activeTab === "approaching" ? "block" : "hidden"}`} id="tab-approaching">
               
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 
@@ -1010,11 +1091,9 @@ export default function App() {
               </div>
 
             </div>
-          )}
 
           {/* TAB 3: HAT OTOBÜS KONUMLARI (Section 4.4) */}
-          {activeTab === "positions" && (
-            <div className="space-y-8" id="tab-positions">
+          <div className={`space-y-8 ${activeTab === "positions" ? "block" : "hidden"}`} id="tab-positions">
               
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 
@@ -1115,70 +1194,9 @@ export default function App() {
                           </span>
                         </div>
 
-                        {/* Custom beautiful Canvas/SVG map representing Izmir Gulf and plot positions */}
-                        <div className="w-full h-[320px] bg-slate-950 rounded-2xl relative overflow-hidden flex items-center justify-center border border-gray-800">
-                          
-                          {/* Beautiful Minimal Grid background lines */}
-                          <div className="absolute inset-0 bg-[radial-gradient(#334155_1.5px,transparent_1px)] [background-size:16px_16px] opacity-20"></div>
-                          
-                          {/* Izmir Gulf Gulf silhouette */}
-                          <svg className="absolute inset-0 w-full h-full text-slate-800/10" viewBox="0 0 800 450" fill="none">
-                            {/* stylized bay */}
-                            <path d="M 50 200 Q 300 200 400 300 T 700 400" stroke="currentColor" strokeWidth="64" strokeLinecap="round" />
-                          </svg>
-
-                          {/* Landmarks */}
-                          <div className="absolute top-1/4 left-1/3 text-[10px] text-gray-500 font-mono select-none">Karşıyaka Sahil</div>
-                          <div className="absolute bottom-1/4 left-2/3 text-[10px] text-gray-500 font-mono select-none">Konak Meydanı</div>
-                          <div className="absolute bottom-1/3 left-1/4 text-[10px] text-gray-500 font-mono select-none">Alsancak Sahili</div>
-
-                          {/* Station anchor */}
-                          <div className="absolute bottom-1/3 left-2/3 flex flex-col items-center">
-                            <div className="w-2.5 h-2.5 rounded-full bg-green-500 ring-4 ring-green-900/40"></div>
-                            <span className="text-[9px] text-green-400 font-bold bg-[#090d16] px-1.5 py-0.5 rounded border border-green-800 mt-1 uppercase">Konak İskele</span>
-                          </div>
-
-                          {/* Render Active Buses dynamically relative to Coordinate space */}
-                          {busPositions && busPositions.length > 0 ? (
-                            busPositions.map((bus, index) => {
-                              // map lat lng roughly onto map container space.
-                              // İzmir coordinates: Lat ~ 38.4, Lng ~ 27.1
-                              // Let's safe-scale coordinates to distribute beautifully inside the view
-                              const safeLng = typeof bus.KoorX === 'number' ? bus.KoorX : parseFloat(bus.KoorX as any) || 27.128;
-                              const safeLat = typeof bus.KoorY === 'number' ? bus.KoorY : parseFloat(bus.KoorY as any) || 38.418;
-
-                              const percentX = Math.max(10, Math.min(90, ((safeLng - 27.05) / 0.15) * 100));
-                              const percentY = Math.max(10, Math.min(90, (1 - (safeLat - 38.35) / 0.15) * 100));
-
-                              return (
-                                <div
-                                  key={`position-marker-${bus.OtobusId || index}-${index}`}
-                                  style={{ left: `${percentX}%`, top: `${percentY}%` }}
-                                  className="absolute -translate-x-1/2 -translate-y-1/2 group z-30"
-                                >
-                                  <div className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center border-2 border-slate-900 shadow-xl cursor-help select-none hover:bg-blue-400 hover:scale-125 transition-transform animate-pulse">
-                                    <Bus className="w-3 h-3" />
-                                  </div>
-                                  
-                                  {/* Tooltip on Hover */}
-                                  <div className="absolute left-6 top-1/2 -translate-y-1/2 w-48 bg-slate-900 border border-slate-700 rounded-xl p-3 text-left shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                                    <p className="text-xs font-bold text-white">Hat No: {selectedRouteId}</p>
-                                    <p className="text-[10px] text-blue-400 font-mono mt-0.5">Otobüs ID: #{bus.OtobusId}</p>
-                                    <div className="mt-1 pt-1.5 border-t border-slate-800 text-[9px] text-gray-400 space-y-0.5">
-                                      <p>Yön: {bus.Yon === 1 ? "Gidiş" : "Dönüş"}</p>
-                                      <p className="font-mono">Enlem: {safeLat.toFixed(5)}</p>
-                                      <p className="font-mono">Boylam: {safeLng.toFixed(5)}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="text-center text-gray-500 text-xs">
-                              Canlı konum bulunamadı.
-                            </div>
-                          )}
-
+                        {/* Real Interactive Leaflet Map for Bus Positions */}
+                        <div className="w-full h-[320px] bg-slate-100 rounded-2xl relative overflow-hidden flex items-center justify-center border border-gray-200 shadow-sm">
+                          <div ref={positionsMapContainerRef} className="w-full h-full z-0"></div>
                         </div>
                       </div>
 
@@ -1230,12 +1248,10 @@ export default function App() {
 
               </div>
 
-            </div>
-          )}
+          </div>
 
           {/* TAB 4: API SANDBOX & DOCUMENTATION */}
-          {activeTab === "sandbox" && (
-            <div className="space-y-8" id="tab-sandbox">
+          <div className={`space-y-8 ${activeTab === "sandbox" ? "block" : "hidden"}`} id="tab-sandbox">
               
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 
@@ -1432,12 +1448,10 @@ export default function App() {
 
               </div>
 
-            </div>
-          )}
+          </div>
 
-          {/* TAB 5: AI TRANSPORT ASSISTANT */}
-          {activeTab === "assistant" && (
-            <div className="space-y-6 max-w-4xl mx-auto" id="tab-assistant">
+          {/* TAB 5: AI ASSISTANT CHAT */}
+          <div className={`h-full flex flex-col ${activeTab === "assistant" ? "flex" : "hidden"}`} id="tab-assistant">
               
               <div className="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col justify-between min-h-[500px]">
                 
@@ -1537,12 +1551,9 @@ export default function App() {
                 </form>
 
               </div>
-
-            </div>
-          )}
+          </div>
 
         </div>
-
       </main>
 
     </div>
